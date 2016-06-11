@@ -1,5 +1,5 @@
 //Created by Adrian Veliz
-
+//A simple proxy to forwards tcp traffic between localhost ports 5000 and 5001
 package main
 
 import (
