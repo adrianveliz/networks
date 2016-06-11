@@ -1,3 +1,5 @@
+//Created by Adrian Veliz
+
 package main
 
 import (
@@ -6,41 +8,66 @@ import (
 	)
 
 type Proxy struct{
-	from *net.Conn
-	to *net.Conn
+	from net.Conn
+	to net.Conn
+	dir string
 }
 
-func (p Proxy)Forward(msg chan string){
-	fmt.Print("got here")
-	close(msg)
+func (p Proxy) Forward (c chan string){
+	var b = make([]byte, 1024)
+	for {
+		num1, error1 := p.from.Read(b)
+		if error1 != nil || num1 == 0 {
+			p.closeAll()
+			c <- "closed " + p.dir
+			return
+		}
+
+		num2, error2 := p.to.Write(b[0:num1])
+		if error2 != nil || num2 == 0 {
+			p.closeAll()
+			c <- "closed " + p.dir
+			return
+		}	
+	}
 }
 
+func (p Proxy) closeAll(){
+	p.from.Close()
+	p.to.Close()
+}
 
 func main(){
-	
-	fmt.Print("started\n")
-	msg1 := make(chan string)
-	msg2 := make(chan string)
-	
-	ln, err := net.Listen("tcp", ":5000")
+	fmt.Println("Starting up SimpleProxy. Listening on port 5000, forwarding to 5001.")
+	fmt.Println("Listening for connection.")
+	ln, err := net.Listen("tcp", "127.0.0.1:5000")
 	if err != nil {
-		// handle error
+		fmt.Print(err)
+		return //error
 	}
 	
-	conn1, err := ln.Accept()
-	if err != nil {
-		// handle error
+	conn1, err1 := ln.Accept()
+	if err1 != nil {
+		fmt.Print(err1)
+		return //error
 	}
-	
-	conn2, err := net.Dial("tcp", ":5001")
-	if err != nil {
-		// handle error
+	fmt.Print("Connected. Setting up forwarding connection.")
+	conn2, err2 := net.Dial("tcp", "127.0.0.1:5001")
+	if err2 != nil {
+		fmt.Print(err2)
+		return //error
 	}
+	fmt.Println("Connected.")
 	
-	cToS := Proxy{&conn2, &conn1}
-	sToC := Proxy{&conn1, &conn2}
+	cToS := Proxy{conn2, conn1, " --> "}
+	sToC := Proxy{conn1, conn2, " <-- "}
 	
-	
-	go cToS.Forward(msg1)
-	go sToC.Forward(msg2)
+	c := make(chan string)
+	go cToS.Forward(c)
+	go sToC.Forward(c)
+
+	fmt.Println("SimplProxy now forwarding.")
+
+	done1, done2 :=  <-c, <-c
+	fmt.Println(done1 + done2)
 }
