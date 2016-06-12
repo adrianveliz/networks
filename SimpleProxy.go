@@ -5,6 +5,8 @@ package main
 import (
 	"net"
 	"fmt"
+	"io"
+	"strconv"
 	)
 
 type Proxy struct{
@@ -16,25 +18,33 @@ type Proxy struct{
 func (p Proxy) Forward (c chan string){
 	var b = make([]byte, 1024)
 	for {
-		num1, error1 := p.from.Read(b)
-		if error1 != nil || num1 == 0 {
-			p.closeAll()
-			c <- "closed " + p.dir
+		num, err := p.from.Read(b)
+		
+		if num > 0 {//read sucessful
+			
+			num2, error2 := p.to.Write(b[0:num])
+			if num2 > 0 {//assumes everything was written, if the numbers don't match something went wrong
+				fmt.Println(p.dir + " " + strconv.Itoa(num) + " bytes rec'd, " + strconv.Itoa(num2) + " bytes sent")
+			} else { //handle write error
+				c <- p.doError(error2)
+				return
+			}
+		} else { //handle read error
+			c <- p.doError(err)
 			return
 		}
-
-		num2, error2 := p.to.Write(b[0:num1])
-		if error2 != nil || num2 == 0 {
-			p.closeAll()
-			c <- "closed " + p.dir
-			return
-		}	
 	}
 }
 
-func (p Proxy) closeAll(){
-	p.from.Close()
+func (p Proxy) doError(err error) (msg string){
+	//p.from.Close()
 	p.to.Close()
+	switch err{
+		case io.EOF:
+			return "EOF, closing connection" + p.dir + "\n"
+		default:
+			return "closing connection " + p.dir + "\n"
+	}
 }
 
 func main(){
@@ -51,7 +61,7 @@ func main(){
 		fmt.Print(err1)
 		return //error
 	}
-	fmt.Print("Connected. Setting up forwarding connection.")
+	fmt.Println("Connected. \nSetting up forwarding connection.")
 	conn2, err2 := net.Dial("tcp", "127.0.0.1:5001")
 	if err2 != nil {
 		fmt.Print(err2)
